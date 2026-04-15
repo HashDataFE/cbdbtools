@@ -1,5 +1,7 @@
 # CBDBTools
 
+[English](README.md)
+
 CBDBTools 是一套 MPP 数据库集群自动化部署工具，支持 Cloudberry、Greenplum、HashData Lightning 和 SynxDB。
 
 提供两种部署方式：
@@ -7,6 +9,48 @@ CBDBTools 是一套 MPP 数据库集群自动化部署工具，支持 Cloudberry
 2. **命令行部署** - 传统 Shell 脚本方式
 
 两种方式都在 **Coordinator 节点**上运行，调用同一套底层部署脚本。
+
+---
+
+## 目录
+
+- [仓库结构](#仓库结构)
+- [支持平台](#支持平台)
+- [前置条件](#前置条件)
+- [部署方式](#部署方式)
+  - [Web UI 部署](#web-ui-部署)
+  - [命令行部署](#命令行部署)
+- [系统调优](#系统调优)
+- [功能特性](#功能特性)
+- [脚本概览](#脚本概览)
+- [实用工具](#实用工具)
+- [常见问题](#常见问题)
+
+---
+
+## 仓库结构
+
+```
+.
+├── run.sh                       # CLI 入口
+├── deploycluster.sh             # 核心编排脚本
+├── deploycluster_parameter.sh   # 中央配置文件
+├── init_env.sh                  # Coordinator 环境初始化
+├── init_env_segment.sh          # Segment 节点环境初始化
+├── init_cluster.sh              # 数据库集群初始化
+├── common.sh                    # 共享函数库
+├── multissh.sh                  # 并行 SSH 命令执行
+├── multiscp.sh                  # 并行文件分发
+├── segmenthosts.conf            # 主机/IP 配置
+├── mirrorlessfailover.sh        # 无 Mirror 场景故障转移工具
+├── cluster_deploy_web.py        # Flask Web 应用
+├── start_web.sh                 # Web UI 启动脚本
+├── wsgi.py                      # WSGI 入口
+├── templates/
+│   └── index.html               # Web UI（单页应用）
+├── test_web.py                  # Web 应用测试
+└── sshpass-1.10.tar.gz          # sshpass 源码包（离线安装用）
+```
 
 ---
 
@@ -38,11 +82,16 @@ CBDBTools 是一套 MPP 数据库集群自动化部署工具，支持 Cloudberry
    - 工具必须在 **Coordinator** 服务器上执行
    - 需要 `root` 用户权限（支持密码和密钥认证）
    - 磁盘建议使用 XFS 文件系统，挂载选项 `noatime,inode64`
+   - 充足的内存和 CPU（参考数据库官方文档）
 
 2. **依赖（自动安装）：**
    - `sshpass`（通过包管理器或编译内置源码包）
    - `python3`, `pip`, `flask`, `gunicorn`（Web UI 需要）
    - `chrony` 或 `ntpd`（时间同步）
+
+3. **网络：**
+   - 所有集群节点必须可从 Coordinator 访问
+   - Web UI 需要开放 5000 端口（部署过程中会自动禁用防火墙）
 
 ---
 
@@ -62,7 +111,7 @@ bash start_web.sh
 
 Web UI 采用 4 步向导模式：
 
-1. **环境配置** - 选择操作系统（自动检测）、部署模式（单机/多机）、数据库安装包。支持从浏览器拖拽上传安装包
+1. **环境配置** - 选择操作系统（自动检测）、部署模式（单机/多机）、数据库安装包。支持从浏览器拖拽上传安装包（实时显示进度）
 2. **集群配置** - 设置管理员用户、Coordinator 信息、Segment 主机（多机模式）、数据目录等。点击**保存配置**后继续
 3. **确认部署** - 查看完整部署配置摘要，包含 Mirror/Standby 未启用等警告信息
 4. **执行部署** - 实时日志流输出，带阶段进度指示器。成功后显示连接信息
@@ -101,6 +150,18 @@ export SEGMENT_ACCESS_METHOD="keyfile"    # 或 "password"
 export SEGMENT_ACCESS_USER="root"
 export SEGMENT_ACCESS_KEYFILE="/root/.ssh/id_rsa"
 ```
+
+#### 可选参数：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `INIT_ENV_ONLY` | false | 仅初始化环境，跳过数据库安装和集群初始化 |
+| `INSTALL_DB_SOFTWARE` | true | 设为 false 跳过 RPM 安装（用于重新初始化）|
+| `WITH_MIRROR` | false | 启用 Mirror Segment |
+| `WITH_STANDBY` | false | 启用 Standby Coordinator |
+| `MANUAL_REPO` | false | 跳过软件源自动配置 |
+| `COORDINATOR_PORT` | 5432 | 数据库端口 |
+| `DATA_DIRECTORY` | /data0/database/primary | 数据目录列表（空格分隔）|
 
 #### 2. 配置主机（仅多机模式）
 
@@ -144,16 +205,90 @@ bash run.sh multi      # 强制多机部署
 
 ---
 
+## 功能特性
+
+- 从安装包文件名自动检测数据库类型和版本
+- 支持 CentOS/RHEL 7-9、Rocky Linux 8-9、Ubuntu 20.04-24.04
+- 多节点并行 SSH/SCP 操作
+- 符合 GP 7.7 的系统调优（THP、NTP、dirty memory、nproc）
+- Web UI 4 步向导，SSE 实时日志流，阶段进度跟踪
+- 支持浏览器拖拽上传安装包到 Coordinator
+- 支持密码和密钥两种 SSH 认证方式
+- gpinitsystem 错误处理（区分警告和致命错误）
+- 中英文界面切换
+
+---
+
+## 脚本概览
+
+| 脚本 | 功能 |
+|------|------|
+| `run.sh` | 入口脚本；防重复运行，后台启动部署 |
+| `deploycluster.sh` | 部署编排：数据库类型检测 → init_env → init_cluster |
+| `common.sh` | 共享函数：OS 检测、sysctl、limits、THP、NTP、用户管理、软件安装 |
+| `init_env.sh` | Coordinator 初始化：依赖、系统调优、用户创建、SSH 密钥、数据库安装、数据目录 |
+| `init_env_segment.sh` | Segment 初始化：相同的调优 + 用户 + 数据库安装（通过 multissh 执行）|
+| `init_cluster.sh` | gpinitsystem、管理员密码、pg_hba.conf、环境变量 |
+| `cluster_deploy_web.py` | Flask 应用：配置管理、安装包上传、部署编排、SSE 日志流 |
+| `start_web.sh` | 安装依赖，启动 gunicorn（1 worker，4 threads，端口 5000）|
+
+---
+
+## 实用工具
+
+### multissh.sh
+
+并行执行远程命令。
+
+```bash
+bash multissh.sh [选项] <命令>
+
+选项:
+  -f, --hosts-file    主机列表文件（每行一个主机名/IP）
+  -u, --user          SSH 用户名
+  -p, --password      SSH 密码
+  -k, --key-file      SSH 私钥文件
+  -c, --concurrency   最大并行连接数（默认: 5）
+  -t, --timeout       连接超时（默认: 30 秒）
+  -P, --port          SSH 端口（默认: 22）
+  -v, --verbose       详细输出
+  -o, --output        保存输出到文件
+```
+
+### multiscp.sh
+
+并行分发文件到多台主机。选项与 multissh.sh 相同。
+
+```bash
+bash multiscp.sh [选项] 源文件 目标路径
+```
+
+### 示例
+
+```bash
+# 检查所有 Segment 的磁盘使用
+bash multissh.sh -k ~/.ssh/id_rsa -f hosts.txt -u root "df -h"
+
+# 分发文件到所有 Segment
+bash multiscp.sh -k ~/.ssh/id_rsa -f hosts.txt -u root ./config.ini /tmp/
+```
+
+---
+
 ## 常见问题
 
 | 问题 | 解决方案 |
 |------|----------|
 | SSH 连接 Segment 超时 | 检查网络连通性，确认 Segment 防火墙已关闭 |
+| `sysctl: Invalid argument` dirty memory 报错 | 更新 common.sh 到最新版本 |
+| `gpinitsystem` FATAL 错误 | 检查 Segment 网络连通性，确认 segmenthosts.conf 配置 |
 | `set: Illegal option -o pipefail` | 使用 `bash` 而非 `sh` 运行脚本 |
 | Ubuntu 上 `source: not found` | gpadmin 的 shell 必须是 `/bin/bash`，运行 `usermod -s /bin/bash gpadmin` |
-| `gpinitsystem` FATAL 错误 | 检查 Segment 网络连通性，确认 segmenthosts.conf 配置 |
+| `ping: command not found` | 安装 `iputils-ping`：`apt install iputils-ping`（最新版本已自动安装）|
+| DEB 包数据库类型检测为 unknown | 更新 deploycluster.sh 到最新版本，已支持 RPM 和 DEB 命名 |
 | Web UI "Save request failed" | 刷新浏览器（Ctrl+F5），确认 gunicorn 正在运行 |
 | Web UI 部署时无日志显示 | 确认 gunicorn 使用 `--workers 1`（不能多 worker）|
+| 重启后 THP 未禁用 | 检查 `/sys/kernel/mm/transparent_hugepage/enabled`，确认 rc.local 或 systemd 服务 |
 
 **日志位置：**
 - CLI 部署：项目目录下 `deploy_cluster_YYYYMMDD_HHMMSS.log`

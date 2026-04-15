@@ -158,7 +158,7 @@ export SEGMENT_ACCESS_PASSWORD="XXXXXXXX"
 | `INSTALL_DB_SOFTWARE` | true | Set false to skip RPM install (for reinit) |
 | `WITH_MIRROR` | false | Enable mirror segments |
 | `WITH_STANDBY` | false | Enable standby coordinator |
-| `MAUNAL_YUM_REPO` | false | Skip auto YUM repo configuration |
+| `MANUAL_REPO` | false | Skip auto YUM/APT repo configuration |
 | `COORDINATOR_PORT` | 5432 | Database port |
 | `DATA_DIRECTORY` | /data0/database/primary | Space-separated data directories |
 

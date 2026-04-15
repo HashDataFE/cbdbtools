@@ -297,7 +297,7 @@
                     <div></div>
                 </div>
                 <div class="opts-row">
-                    <label><input type="checkbox" id="opt_skiprepo" {{ 'checked' if file_config.get('MAUNAL_YUM_REPO') == 'true' else '' }}> <span data-i18n="skip_repo">Skip Repo Config</span></label>
+                    <label><input type="checkbox" id="opt_skiprepo" {{ 'checked' if file_config.get('MANUAL_REPO') == 'true' or file_config.get('MAUNAL_YUM_REPO') == 'true' else '' }}> <span data-i18n="skip_repo">Skip Repo Config</span></label>
                     <label><input type="checkbox" id="opt_envonly" {{ 'checked' if file_config.get('INIT_ENV_ONLY') == 'true' else '' }}> <span data-i18n="env_only">Init Environment Only</span></label>
                     <label><input type="checkbox" id="opt_skipinstall" {{ 'checked' if file_config.get('INSTALL_DB_SOFTWARE') == 'false' else '' }}> <span data-i18n="skip_install">Skip Software Install</span></label>
                 </div>

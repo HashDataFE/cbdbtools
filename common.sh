@@ -147,8 +147,7 @@ disable_firewall() {
 # Configure package repositories based on OS version
 # Backward compatible: also available as configure_yum_repo()
 configure_repo() {
-    # Support both new MANUAL_REPO and old MAUNAL_YUM_REPO variable names
-    if [ "${MANUAL_REPO}" = "true" ] || [ "${MAUNAL_YUM_REPO}" = "true" ]; then
+    if [ "${MANUAL_REPO}" = "true" ]; then
         log_time "Manual repo mode - skipping auto configuration."
         return 0
     fi

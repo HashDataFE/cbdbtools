@@ -22,3 +22,5 @@ deploy_cluster_*.log
 *.log
 .claude/
 .pytest_cache/
+entities.json
+mempalace.yaml

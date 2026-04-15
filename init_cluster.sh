@@ -117,7 +117,9 @@ su "${ADMIN_USER}" -l -c "export COORDINATOR_DATA_DIRECTORY=${COORDINATOR_DATA_D
     log_time "Warning: Failed to set admin password."
 
 # Configure pg_hba.conf for remote access
-echo "host all all 0.0.0.0/0 trust" >> "${COORDINATOR_DATA_DIRECTORY}/pg_hba.conf"
+# WARNING: Using md5 authentication. For stricter security, consider scram-sha-256
+# and restricting the IP range (e.g., 192.168.0.0/16 instead of 0.0.0.0/0).
+echo "host all all 0.0.0.0/0 md5" >> "${COORDINATOR_DATA_DIRECTORY}/pg_hba.conf"
 
 # Setup environment variables for admin user
 log_time "Setting up environment variables for ${ADMIN_USER}..."

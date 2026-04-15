@@ -91,10 +91,10 @@ function init_segment() {
     if [ "${SEGMENT_ACCESS_METHOD}" = "keyfile" ]; then
       log_time "Initializing segment: ${i}"
       ssh -n -q -i "${SEGMENT_ACCESS_KEYFILE}" "${SEGMENT_ACCESS_USER}@${i}" \
-        "bash -c 'sudo sh ${working_dir}/init_env_segment.sh ${i} ${working_dir} &> ${log_file}'" &
+        "bash -c 'sudo bash ${working_dir}/init_env_segment.sh ${i} ${working_dir} &> ${log_file}'" &
     else
       sshpass -p "${SEGMENT_ACCESS_PASSWORD}" ssh -n -q "${SEGMENT_ACCESS_USER}@${i}" \
-        "bash -c 'sudo sh ${working_dir}/init_env_segment.sh ${i} ${working_dir} &> ${log_file}'" &
+        "bash -c 'sudo bash ${working_dir}/init_env_segment.sh ${i} ${working_dir} &> ${log_file}'" &
     fi
   done
   wait

@@ -1,6 +1,6 @@
 # CBDBTools 产品设计文档
 
-> 版本: v1.1 | 日期: 2026-03-19 | 状态: Draft
+> 版本: v2.0 | 日期: 2026-04-14 | 状态: Release
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 1.1 产品定位
 
-CBDBTools 是一套面向 MPP 数据库集群的**自动化部署工具**，支持通过命令行(CLI)或 Web UI 两种方式，在 CentOS/RHEL 7-9 上一键完成数据库集群的环境初始化和集群创建。
+CBDBTools 是一套面向 MPP 数据库集群的**自动化部署工具**，支持通过命令行(CLI)或 Web UI 两种方式，在 CentOS/RHEL 7-9、Rocky Linux 8-9、Oracle Linux 8 以及 Ubuntu 20.04-24.04 上一键完成数据库集群的环境初始化和集群创建。
 
 ### 1.2 目标用户
 
@@ -192,25 +192,25 @@ run.sh
 
 ### 4.1 文件清单与职责
 
-| 文件 | 类型 | 职责 | 行数 |
-|------|------|------|------|
-| `run.sh` | Shell | CLI 入口，防重复执行，后台启动部署 | ~46 |
-| `deploycluster.sh` | Shell | 核心编排：数据库类型检测 + 调度 init 脚本 | ~137 |
-| `deploycluster_parameter.sh` | Shell | 中央配置文件，所有参数定义 | ~50 |
-| `init_env.sh` | Shell | Coordinator 环境初始化 | ~233 |
-| `init_env_segment.sh` | Shell | Segment 节点环境初始化 | ~60 |
-| `init_cluster.sh` | Shell | gpinitsystem 集群初始化 | ~137 |
-| `common.sh` | Shell | 共享函数库 (日志/系统配置/用户管理等) | ~443 |
-| `multissh.sh` | Shell | 并行远程命令执行工具 | ~200 |
-| `multiscp.sh` | Shell | 并行远程文件分发工具 | ~200 |
-| `segmenthosts.conf` | Conf | 主机名 ↔ IP 映射配置 | ~10 |
-| `mirrorlessfailover.sh` | Shell | 无 Mirror 场景下的故障转移工具 | ~120 |
-| `cluster_deploy_web.py` | Python | Flask Web 应用 | ~770 |
-| `start_web.sh` | Shell | Web 服务启动脚本 (gunicorn 单进程多线程) | ~60 |
-| `wsgi.py` | Python | WSGI 入口 | ~6 |
-| `templates/index.html` | HTML | 前端单页应用 | ~660 |
-| `test_web.py` | Python | Web 应用单元测试 | ~500 |
-| `sshpass-1.10.tar.gz` | Binary | sshpass 源码包 (离线安装用) | - |
+| 文件 | 类型 | 职责 |
+|------|------|------|
+| `run.sh` | Shell | CLI 入口，防重复执行，后台启动部署 |
+| `deploycluster.sh` | Shell | 核心编排：数据库类型检测 + 调度 init 脚本 |
+| `deploycluster_parameter.sh` | Shell | 中央配置文件，所有参数定义 |
+| `init_env.sh` | Shell | Coordinator 环境初始化 |
+| `init_env_segment.sh` | Shell | Segment 节点环境初始化 |
+| `init_cluster.sh` | Shell | gpinitsystem 集群初始化 |
+| `common.sh` | Shell | 共享函数库 (日志/系统配置/用户管理等) |
+| `multissh.sh` | Shell | 并行远程命令执行工具 |
+| `multiscp.sh` | Shell | 并行远程文件分发工具 |
+| `segmenthosts.conf` | Conf | 主机名 ↔ IP 映射配置 |
+| `mirrorlessfailover.sh` | Shell | 无 Mirror 场景下的故障转移工具 |
+| `cluster_deploy_web.py` | Python | Flask Web 应用 |
+| `start_web.sh` | Shell | Web 服务启动脚本 (gunicorn 单进程多线程) |
+| `wsgi.py` | Python | WSGI 入口 |
+| `templates/index.html` | HTML | 前端单页应用 |
+| `test_web.py` | Python | Web 应用单元测试 |
+| `sshpass-1.10.tar.gz` | Binary | sshpass 源码包 (离线安装用) |
 
 ### 4.2 common.sh 函数库
 
@@ -369,8 +369,8 @@ run.sh
 ### 6.4 文件上传
 
 - 使用 `secure_filename()` 处理文件名
-- 最大上传大小: 2GB
-- 文件保存到 `/tmp` 临时目录
+- 无上传大小限制 (`MAX_CONTENT_LENGTH = None`)，数据库安装包可能超过 2GB
+- 文件保存到 `/tmp/uploads/` 临时目录
 
 ---
 
