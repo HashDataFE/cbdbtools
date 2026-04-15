@@ -258,11 +258,25 @@ class TestDetectDbFromPackage:
     def test_hashdata_lightning_2(self):
         info = detect_db_from_package('/root/hashdata-lightning-2.4.0-1.x86_64.rpm')
         assert info['db_type'] == 'HashData Lightning'
+        assert info['db_version'] == '2.4.0'
+        assert info['binary_path'] == '/usr/local/hashdata-lightning'
+
+    def test_hashdata_lightning_2_deb(self):
+        info = detect_db_from_package('/root/hashdata-lightning_2.4.0-1_amd64.deb')
+        assert info['db_type'] == 'HashData Lightning'
+        assert info['db_version'] == '2.4.0'
         assert info['binary_path'] == '/usr/local/hashdata-lightning'
 
     def test_hashdata_lightning_1(self):
         info = detect_db_from_package('/root/hashdata-lightning-1.5.0.rpm')
         assert info['db_type'] == 'HashData Lightning'
+        assert info['db_version'] == '1.5.0'
+        assert info['binary_path'] == '/usr/local/cloudberry-db'
+
+    def test_hashdata_lightning_1_deb(self):
+        info = detect_db_from_package('/root/hashdata-lightning_1.5.0-1_amd64.deb')
+        assert info['db_type'] == 'HashData Lightning'
+        assert info['db_version'] == '1.5.0'
         assert info['binary_path'] == '/usr/local/cloudberry-db'
 
     def test_synxdb4(self):

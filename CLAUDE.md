@@ -99,4 +99,4 @@ Supported databases: Cloudberry, Greenplum (5.x/6.x/7.x), HashData Lightning, Sy
 - `INIT_ENV_ONLY` - Set to `true` to skip cluster initialization
 - `INSTALL_DB_SOFTWARE` - Set to `false` to skip RPM installation (for reinit)
 - `WITH_MIRROR` / `WITH_STANDBY` - Enable mirrors/standby
-- `MAUNAL_YUM_REPO` - Set to `true` to skip auto YUM repo configuration
+- `MANUAL_REPO` - Set to `true` to skip auto YUM/APT repo configuration

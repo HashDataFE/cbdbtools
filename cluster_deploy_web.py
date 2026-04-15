@@ -204,20 +204,19 @@ def detect_db_from_package(pkg_path):
             'binary_path': '/usr/local/greenplum-db',
             'legacy': legacy,
         }
-    elif 'hashdata-lightning-2' in filename:
-        m = re.search(r'hashdata-lightning-([0-9.]+)', filename)
+    elif 'hashdata-lightning' in filename:
+        # Support both RPM (hashdata-lightning-2.4.0) and DEB (hashdata-lightning_2.4.0) naming
+        m = re.search(r'hashdata-lightning[-_]([0-9]+(?:\.[0-9]+)*)', filename)
+        version = m.group(1) if m else 'unknown'
+        major = version.split('.')[0] if version != 'unknown' else '2'
+        if major == '1':
+            binary_path = '/usr/local/cloudberry-db'
+        else:
+            binary_path = '/usr/local/hashdata-lightning'
         return {
             'db_type': 'HashData Lightning',
-            'db_version': m.group(1) if m else 'unknown',
-            'binary_path': '/usr/local/hashdata-lightning',
-            'legacy': False,
-        }
-    elif 'hashdata-lightning-1' in filename:
-        m = re.search(r'hashdata-lightning-([0-9.]+)', filename)
-        return {
-            'db_type': 'HashData Lightning',
-            'db_version': m.group(1) if m else 'unknown',
-            'binary_path': '/usr/local/cloudberry-db',
+            'db_version': version,
+            'binary_path': binary_path,
             'legacy': False,
         }
     elif 'synxdb4' in filename:
@@ -274,7 +273,7 @@ def generate_config_file(params):
         'INSTALL_DB_SOFTWARE': 'true',
         'INIT_ENV_ONLY': 'false',
         'WITH_STANDBY': 'false',
-        'MAUNAL_YUM_REPO': 'false',
+        'MANUAL_REPO': 'false',
         'TIMEZONE': 'Asia/Shanghai',
     }
 
@@ -283,9 +282,9 @@ def generate_config_file(params):
     merged.update(original_config)
     merged.update({k: v for k, v in params.items() if v})
 
-    # Sync MANUAL_REPO to old variable name for backward compat
-    if 'MANUAL_REPO' in merged:
-        merged['MAUNAL_YUM_REPO'] = merged.pop('MANUAL_REPO')
+    # Normalize legacy variable name
+    if 'MAUNAL_YUM_REPO' in merged:
+        merged['MANUAL_REPO'] = merged.pop('MAUNAL_YUM_REPO')
 
     lines = [
         '#!/bin/bash',
