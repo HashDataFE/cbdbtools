@@ -33,7 +33,18 @@ function config_hostsfile() {
   echo "##Coordinator hosts" >> "$temp_hosts"
   sed -n '/##Coordinator hosts/,/##Segment hosts/p' "${SCRIPT_DIR}/segmenthosts.conf" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' >> "$temp_hosts"
   echo "##Segment hosts" >> "$temp_hosts"
-  sed -n '/##Segment hosts/,/#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' >> "$temp_hosts"
+  # Bound the segment range at ##Standby hosts (if present) so a standby
+  # host declared in segmenthosts.conf is not grouped with segments.
+  sed -n '/##Segment hosts/,/##Standby hosts\|#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' >> "$temp_hosts"
+  # Optional ##Standby hosts block: when WITH_STANDBY=true the operator
+  # declares a single standby host between ##Standby hosts and
+  # #Hashdata hosts end. Distributed to every cluster host so cross-host
+  # name resolution works for gpinitstandby's base backup. Omitted when
+  # no standby block is present (default deploy is unchanged).
+  if grep -q '^##Standby hosts' "${SCRIPT_DIR}/segmenthosts.conf"; then
+    echo "##Standby hosts" >> "$temp_hosts"
+    sed -n '/##Standby hosts/,/#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' >> "$temp_hosts"
+  fi
   echo "#Hashdata hosts end" >> "$temp_hosts"
 
   cat "$temp_hosts" >> /etc/hosts
@@ -100,6 +111,65 @@ function init_segment() {
   wait
 
   log_time "Finished segment host initialization."
+}
+
+function copyfile_standby() {
+  # Mirror of copyfile_segment but for the standby host. Kept separate so
+  # the segment fan-out via multiscp.sh stays unchanged. WITH_STANDBY +
+  # non-empty standby_hosts.txt are gated by the caller.
+  log_time "Copying deployment files to standby host..."
+  local hosts_file="${working_dir}/standby_hosts.txt"
+  local access_opts
+  if [ "${SEGMENT_ACCESS_METHOD}" = "keyfile" ]; then
+    access_opts="-k ${SEGMENT_ACCESS_KEYFILE}"
+  else
+    access_opts="-p ${SEGMENT_ACCESS_PASSWORD}"
+  fi
+  local common_args="-v ${access_opts} -f ${hosts_file} -u ${SEGMENT_ACCESS_USER}"
+  bash "${SCRIPT_DIR}/multissh.sh" ${common_args} "rm -rf ${working_dir}; mkdir -p ${working_dir}"
+  local files_to_copy=(
+    "init_env_segment.sh"
+    "deploycluster_parameter.sh"
+    "common.sh"
+    "${working_dir}/hostsfile"
+    "/home/${ADMIN_USER}/.ssh/id_rsa.pub"
+    "${CLOUDBERRY_RPM}"
+  )
+  for f in "${files_to_copy[@]}"; do
+    local src="$f"
+    if [[ "$f" != /* ]] && [[ "$f" != "${working_dir}"/* ]]; then
+      src="${SCRIPT_DIR}/${f}"
+    fi
+    bash "${SCRIPT_DIR}/multiscp.sh" ${common_args} "${src}" "${working_dir}"
+  done
+  log_time "Finished copying files to standby host."
+}
+
+function init_standby() {
+  # Same shell as init_segment but iterates standby_hosts.txt (cbdb
+  # supports exactly one standby coordinator). The standby host gets the
+  # same OS-level prep as a segment via init_env_segment.sh — gpadmin
+  # user, /etc/hosts, RPM install, kernel params, /data dirs (created
+  # for both COORDINATOR_DIRECTORY and DATA_DIRECTORY by common.sh).
+  # gpinitstandby on the coordinator (in init_cluster.sh) wires up the
+  # cbdb-specific standby state on top of that prep.
+  log_time "Initializing standby coordinator host..."
+  local logfilename
+  logfilename="$(date +%Y%m%d_%H%M%S)"
+  local hosts_file="${working_dir}/standby_hosts.txt"
+  for i in $(cat "${hosts_file}"); do
+    local log_file="${working_dir}/init_env_standby_${i}_${logfilename}.log"
+    if [ "${SEGMENT_ACCESS_METHOD}" = "keyfile" ]; then
+      log_time "Initializing standby: ${i}"
+      ssh -n -q -i "${SEGMENT_ACCESS_KEYFILE}" "${SEGMENT_ACCESS_USER}@${i}" \
+        "bash -c 'sudo bash ${working_dir}/init_env_segment.sh ${i} ${working_dir} &> ${log_file}'" &
+    else
+      sshpass -p "${SEGMENT_ACCESS_PASSWORD}" ssh -n -q "${SEGMENT_ACCESS_USER}@${i}" \
+        "bash -c 'sudo bash ${working_dir}/init_env_segment.sh ${i} ${working_dir} &> ${log_file}'" &
+    fi
+  done
+  wait
+  log_time "Finished standby coordinator initialization."
 }
 
 # ==================== Main Execution ====================
@@ -175,29 +245,53 @@ if [ "$cluster_type" = "multi" ]; then
     chmod 600 "${SEGMENT_ACCESS_KEYFILE}"
   fi
 
-  # Extract segment hostnames
-  sed -n '/##Segment hosts/,/#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | \
+  # Extract segment hostnames (bounded — stop at ##Standby hosts so the
+  # standby host never lands in segment_hosts.txt; gpinitsystem would
+  # otherwise treat it as a segment).
+  sed -n '/##Segment hosts/,/##Standby hosts\|#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | \
     awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {print $2}' > "${working_dir}/segment_hosts.txt"
+
+  # Extract standby hostname (zero or one host). Empty file means
+  # no-standby deploy (default); a non-empty file gates the optional
+  # standby provisioning + gpinitstandby step downstream.
+  sed -n '/##Standby hosts/,/#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | \
+    awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {print $2}' > "${working_dir}/standby_hosts.txt"
 
   config_hostsfile
 
-  # Extend SSH config to include segment hosts
+  # Extend SSH config to include segment hosts (and the standby host if
+  # any — gpadmin needs SSH-keyless access to it for gpinitstandby's
+  # base-backup phase).
   seg_hosts=$(paste -sd' ' "${working_dir}/segment_hosts.txt")
-  sed -i "s/^Host .*/& ${seg_hosts}/" "/home/${ADMIN_USER}/.ssh/config"
+  standby_hosts=$(paste -sd' ' "${working_dir}/standby_hosts.txt" 2>/dev/null)
+  sed -i "s/^Host .*/& ${seg_hosts} ${standby_hosts}/" "/home/${ADMIN_USER}/.ssh/config"
 
-  # Add segment hosts to known_hosts for root
-  for i in $(cat "${working_dir}/segment_hosts.txt"); do
+  # Add segment + standby hosts to known_hosts for root. Concatenating
+  # the two files keeps the loop a no-op in the no-standby case
+  # (standby_hosts.txt is empty).
+  for i in $(cat "${working_dir}/segment_hosts.txt" "${working_dir}/standby_hosts.txt" 2>/dev/null); do
     ssh-keyscan "$i" >> ~/.ssh/known_hosts 2>/dev/null
   done
 
   copyfile_segment
   init_segment
 
+  # Standby coordinator gets the same OS-level prep as a segment
+  # (gpadmin user, RPM, kernel params, /etc/hosts, data dirs).
+  # gpinitstandby on the coordinator (in init_cluster.sh) expects all
+  # of that already in place.
+  if [ "${WITH_STANDBY}" = "true" ] && [ -s "${working_dir}/standby_hosts.txt" ]; then
+    copyfile_standby
+    init_standby
+  fi
+
   #Step 9: Setup no-password access for all nodes
   log_time "Step 9: Setup no-password access for all nodes..."
 
-  # Collect host keys for admin user (coordinator + all segments)
-  for i in $(cat "${working_dir}/segment_hosts.txt"); do
+  # Collect host keys for admin user (coordinator + all segments + standby).
+  # Concatenating both files keeps the loop a no-op in the no-standby
+  # case (standby_hosts.txt is empty).
+  for i in $(cat "${working_dir}/segment_hosts.txt" "${working_dir}/standby_hosts.txt" 2>/dev/null); do
     su "${ADMIN_USER}" -l -c "ssh-keyscan -t rsa,ecdsa,ed25519 ${i} >> ~/.ssh/known_hosts 2>/dev/null"
     ip_addr=$(getent hosts "$i" | awk '{print $1}')
     if [ -n "$ip_addr" ]; then
