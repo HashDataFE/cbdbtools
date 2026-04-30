@@ -13,6 +13,10 @@ export INSTALL_DB_SOFTWARE="true"
 export INIT_ENV_ONLY="false"
 export INIT_CONFIGFILE="/tmp/gpinitsystem_config"
 export WITH_MIRROR="false"
+# When WITH_STANDBY=true, segmenthosts.conf must also include a
+# ##Standby hosts block declaring exactly one standby host (see
+# segmenthosts.conf for the format). Without that block this flag is
+# a no-op and the cluster is initialised without a standby coordinator.
 export WITH_STANDBY="false"
 export MANUAL_REPO="false"
 export TIMEZONE="Asia/Shanghai"

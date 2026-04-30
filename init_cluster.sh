@@ -82,12 +82,18 @@ MIRROR_DATA_DIRECTORY=(${MIRROR_DATA_DIRECTORY})
 EOF
 fi
 
-# Generate machine list
+# Generate machine list. The sed range is bounded at ##Standby hosts
+# (alternation falls through to #Hashdata hosts end when no standby
+# block is present, so the no-standby case is unchanged). Without the
+# bound, the awk picks up the literal "hosts" word from the
+# ##Standby hosts header line and feeds it to ping, FATALing
+# gpinitsystem with "Unknown host hosts"; the standby IP would also
+# leak in and gpinitsystem would create a gpseg-N on the standby host.
 if [ "$cluster_type" = "single" ]; then
   echo "${COORDINATOR_HOSTNAME}" > "${MACHINE_LIST_FILE}"
 elif [ "$cluster_type" = "multi" ]; then
-  sed -n '/##Segment hosts/,/#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | \
-    sed '1d;$d' | awk '{print $2}' > "${MACHINE_LIST_FILE}"
+  sed -n '/##Segment hosts/,/##Standby hosts\|#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | \
+    awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {print $2}' > "${MACHINE_LIST_FILE}"
 else
   log_time "Error: DEPLOY_TYPE must be 'single' or 'multi', got: ${cluster_type}"
   exit 1
@@ -141,5 +147,30 @@ log_time "Finished setting up environment variables for ${ADMIN_USER}."
 # Reload configuration
 su "${ADMIN_USER}" -l -c "source ${CLOUDBERRY_BINARY_PATH}/${CLUSTER_ENV}; gpstop -u" || \
     log_time "Warning: gpstop -u failed."
+
+# Standby coordinator init. WITH_STANDBY=true means init_env.sh has
+# already provisioned the standby host (gpadmin user, RPM, /etc/hosts
+# merge, gpadmin SSH trust to all hosts). Now wire it up via
+# gpinitstandby on the coordinator. cbdb supports exactly one standby
+# coordinator so standby_hosts.txt is expected to carry one hostname.
+# init_env.sh's working_dir is a local var in that script's process;
+# rebuild it from SEGMENT_ACCESS_USER (same convention) so this script
+# stands alone.
+standby_hosts_file="/tmp/${SEGMENT_ACCESS_USER}/standby_hosts.txt"
+if [ "${WITH_STANDBY}" = "true" ] && [ -s "${standby_hosts_file}" ]; then
+  STANDBY_HOSTNAME=$(head -n1 "${standby_hosts_file}")
+  log_time "Initializing standby coordinator on ${STANDBY_HOSTNAME}..."
+  gpinit_stdby_exit=0
+  su "${ADMIN_USER}" -l -c "
+    export COORDINATOR_DATA_DIRECTORY=${COORDINATOR_DATA_DIRECTORY};
+    source ${CLOUDBERRY_BINARY_PATH}/${CLUSTER_ENV};
+    gpinitstandby -a -s ${STANDBY_HOSTNAME}
+  " || gpinit_stdby_exit=$?
+  if [ "${gpinit_stdby_exit}" -gt 1 ]; then
+    log_time "Warning: gpinitstandby exited ${gpinit_stdby_exit}; standby may not be configured."
+  else
+    log_time "Standby coordinator initialised on ${STANDBY_HOSTNAME}."
+  fi
+fi
 
 log_time "Finished cluster initialization."

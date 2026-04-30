@@ -157,7 +157,7 @@ export SEGMENT_ACCESS_PASSWORD="XXXXXXXX"
 | `INIT_ENV_ONLY` | false | Only configure OS, skip DB install and cluster init |
 | `INSTALL_DB_SOFTWARE` | true | Set false to skip RPM install (for reinit) |
 | `WITH_MIRROR` | false | Enable mirror segments |
-| `WITH_STANDBY` | false | Enable standby coordinator |
+| `WITH_STANDBY` | false | Enable standby coordinator. Requires a `##Standby hosts` block in `segmenthosts.conf` (see below). |
 | `MANUAL_REPO` | false | Skip auto YUM/APT repo configuration |
 | `COORDINATOR_PORT` | 5432 | Database port |
 | `DATA_DIRECTORY` | /data0/database/primary | Space-separated data directories |
@@ -178,6 +178,32 @@ Edit `segmenthosts.conf`:
 10.14.4.65 sdw4
 #Hashdata hosts end
 ```
+
+To deploy a **standby coordinator**, set `WITH_STANDBY="true"` in
+`deploycluster_parameter.sh` **and** add a `##Standby hosts` block
+between the segment hosts and `#Hashdata hosts end`:
+
+```
+##Define hosts used for Hashdata
+#Hashdata hosts begin
+##Coordinator hosts
+10.14.3.217 mdw
+##Segment hosts
+10.14.5.184 sdw1
+10.14.5.177 sdw2
+##Standby hosts
+10.14.5.250 smdw
+#Hashdata hosts end
+```
+
+Exactly one standby host is supported (this is a cbdb constraint —
+`gpinitstandby` only manages a single standby coordinator). The
+standby host receives the same OS-level prep as a segment
+(`gpadmin` user, RPM install, kernel params, `/etc/hosts` merge);
+`init_cluster.sh` then runs `gpinitstandby -a -s <standby-host>` on
+the coordinator after `gpstop -u`. With `WITH_STANDBY="false"` (the
+default) the `##Standby hosts` block is ignored, so it is safe to
+keep in the config across both deployment modes.
 
 #### 3. Start Deployment
 

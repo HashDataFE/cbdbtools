@@ -158,7 +158,7 @@ export SEGMENT_ACCESS_KEYFILE="/root/.ssh/id_rsa"
 | `INIT_ENV_ONLY` | false | 仅初始化环境，跳过数据库安装和集群初始化 |
 | `INSTALL_DB_SOFTWARE` | true | 设为 false 跳过 RPM 安装（用于重新初始化）|
 | `WITH_MIRROR` | false | 启用 Mirror Segment |
-| `WITH_STANDBY` | false | 启用 Standby Coordinator |
+| `WITH_STANDBY` | false | 启用 Standby Coordinator。需在 `segmenthosts.conf` 中追加 `##Standby hosts` 区块（见下文）|
 | `MANUAL_REPO` | false | 跳过软件源自动配置 |
 | `COORDINATOR_PORT` | 5432 | 数据库端口 |
 | `DATA_DIRECTORY` | /data0/database/primary | 数据目录列表（空格分隔）|
@@ -177,6 +177,31 @@ export SEGMENT_ACCESS_KEYFILE="/root/.ssh/id_rsa"
 10.14.5.177 sdw2
 #Hashdata hosts end
 ```
+
+如需部署 **Standby Coordinator**，在 `deploycluster_parameter.sh`
+中设置 `WITH_STANDBY="true"`，**并** 在 `segment hosts` 与
+`#Hashdata hosts end` 之间追加 `##Standby hosts` 区块：
+
+```
+##Define hosts used for Hashdata
+#Hashdata hosts begin
+##Coordinator hosts
+10.14.3.217 mdw
+##Segment hosts
+10.14.5.184 sdw1
+10.14.5.177 sdw2
+##Standby hosts
+10.14.5.250 smdw
+#Hashdata hosts end
+```
+
+仅支持一个 Standby 主机（cbdb 限制：`gpinitstandby` 仅管理单一
+Standby Coordinator）。Standby 主机会与 Segment 主机一样接受 OS 层
+的初始化（gpadmin 用户、RPM 安装、内核参数、`/etc/hosts` 合并），
+随后 `init_cluster.sh` 会在 `gpstop -u` 之后于 Coordinator 上执行
+`gpinitstandby -a -s <standby-host>`。当 `WITH_STANDBY="false"`（默
+认值）时，`##Standby hosts` 区块会被忽略，因此可在两种部署模式中
+保留该区块。
 
 #### 3. 启动部署
 
