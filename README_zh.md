@@ -109,14 +109,47 @@ bash start_web.sh
 
 然后在浏览器中打开 `http://<coordinator-ip>:5000`。
 
-Web UI 采用 4 步向导模式：
+Web UI 采用 4 步向导模式。
 
-1. **环境配置** - 选择操作系统（自动检测）、部署模式（单机/多机）、数据库安装包。支持从浏览器拖拽上传安装包（实时显示进度）
-2. **集群配置** - 设置管理员用户、Coordinator 信息、Segment 主机（多机模式）、数据目录等。可勾选 **Mirror Segments** 启用 Mirror 副本；可勾选 **Standby Coordinator** 部署 Standby 主机（仅多机模式 — 勾选后展开 IP + 主机名输入；cbdb 仅支持单 Standby；Standby 复用 Segment 的 SSH 凭据）。点击**保存配置**后继续
-3. **确认部署** - 查看完整部署配置摘要，启用 Standby 时会展示 Standby 主机信息；包含 Mirror/Standby 未启用等警告信息
-4. **执行部署** - 实时日志流输出，带阶段进度指示器。成功后显示连接信息
+#### 第 1 步 — 环境配置
 
-界面支持中英文切换（右上角切换按钮）。
+选择操作系统（自动检测）、部署模式（单机/多机）、数据库安装包。可填写服务器上已有的安装包路径，也可**直接从浏览器拖拽上传**(带实时进度)。安装包校验通过后点击**下一步**。
+
+![第 1 步：环境配置](docs/screenshots/01-step1-environment.png)
+
+#### 第 2 步 — 集群配置
+
+填写管理员用户、Coordinator 信息、Segment 主机(仅多机模式)、数据目录、Segment SSH 访问方式。表单底部的 **Mirror Segments** 与 **Standby Coordinator** 是两个可选开关。
+
+![第 2 步：默认 — Mirror 和 Standby 均未勾选](docs/screenshots/02-step2-default.png)
+
+勾选 **Standby Coordinator** 后会展开 IP + 主机名输入框。cbdb **仅支持一个** Standby Coordinator；Standby 主机复用 Segment 的 SSH 凭据,**不需要第二套凭据**。如果填写的 Standby IP 与 Coordinator 或任意 Segment 冲突,表单会拒绝保存。
+
+![第 2 步：勾选 Standby Coordinator](docs/screenshots/03-step2-standby-on.png)
+
+**Standby Coordinator** 开关仅在多机模式下出现。第 1 步切回 **Single Node** 时,该区段会自动隐藏并强制取消勾选(单机模式没有第二台机器承载 standby,`gpinitstandby` 会失败)。
+
+![第 2 步:Single Node 模式自动隐藏 Standby](docs/screenshots/04-step2-single-mode.png)
+
+点击**保存配置**持久化,然后点击**下一步**。
+
+#### 第 3 步 — 确认部署
+
+预览完整部署配置摘要。启用 Standby 时会展示 **Standby Coordinator** 段(IP + 主机名);未启用 Mirror / Standby 时会显示警告。
+
+![第 3 步:Preview 显示 Standby Coordinator](docs/screenshots/05-step3-preview.png)
+
+点击 **Confirm & Deploy** 启动部署。
+
+#### 第 4 步 — 执行部署
+
+实时日志流输出,带阶段进度指示器。成功后显示连接信息。
+
+#### 语言切换
+
+右上角的 `中文 / EN` 按钮可在中英文之间切换整个界面;Standby 相关的标签、提示与校验信息均已本地化。
+
+![第 2 步中文界面 + Standby 勾选](docs/screenshots/06-step2-zh-standby-on.png)
 
 ### 命令行部署
 

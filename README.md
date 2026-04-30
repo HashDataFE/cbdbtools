@@ -109,12 +109,47 @@ bash start_web.sh
 
 Then open `http://<coordinator-ip>:5000` in a browser.
 
-The Web UI is a 4-step wizard:
+The Web UI is a 4-step wizard.
 
-1. **Environment** - Select OS type (auto-detected), deployment mode (single/multi), and database package. You can either enter a path to a package already on the server, or **upload a package directly from your browser** via drag-and-drop (with real-time progress)
-2. **Configuration** - Set admin user, coordinator info, segment hosts (multi-node), data directories, and advanced options. Toggle **Mirror Segments** for redundancy, and toggle **Standby Coordinator** to deploy a standby host (multi-node only — checking the box reveals IP + hostname inputs; cbdb supports exactly one standby; the standby reuses the same SSH credentials as segments). Click **Save Configuration** before proceeding
-3. **Preview** - Review complete deployment summary, including the standby host when enabled, with warnings for missing mirrors/standby
-4. **Deploy** - Real-time log streaming with phase progress indicators. Shows connection info on success
+#### Step 1 — Environment
+
+Select OS type (auto-detected), deployment mode (single/multi), and database package. You can either enter a path to a package already on the server, or **upload a package directly from your browser** via drag-and-drop (with real-time progress). Click **Next** once the package is validated.
+
+![Step 1: Environment](docs/screenshots/01-step1-environment.png)
+
+#### Step 2 — Configuration
+
+Fill in admin user, coordinator info, segment hosts (multi-node only), data directories, and segment SSH access. **Mirror Segments** and **Standby Coordinator** are optional toggles at the bottom of the form.
+
+![Step 2: default — Mirror and Standby unchecked](docs/screenshots/02-step2-default.png)
+
+Checking **Standby Coordinator** reveals IP + hostname inputs. cbdb supports **exactly one** standby coordinator; the standby host reuses the same SSH credentials as segments — there is no second credential set. The form rejects a standby IP that collides with the coordinator or any segment.
+
+![Step 2: Standby Coordinator on](docs/screenshots/03-step2-standby-on.png)
+
+The **Standby Coordinator** toggle only appears in multi-node mode. Switching back to **Single Node** in Step 1 hides the section and force-unchecks it (single-node has nowhere to host a standby; `gpinitstandby` would fail).
+
+![Step 2: single-node hides Standby](docs/screenshots/04-step2-single-mode.png)
+
+Click **Save Configuration** to persist, then **Next**.
+
+#### Step 3 — Confirm
+
+Review complete deployment summary. When standby is enabled, a **Standby Coordinator** section shows the IP + hostname; warnings flag missing mirrors / standby.
+
+![Step 3: Preview with Standby Coordinator](docs/screenshots/05-step3-preview.png)
+
+Click **Confirm & Deploy** to start.
+
+#### Step 4 — Deploy
+
+Real-time log streaming with phase progress indicators. Shows connection info on success.
+
+#### Language toggle
+
+The top-right `中文 / EN` button switches the entire UI between English and Simplified Chinese; all standby labels, hints, and validation messages are localised.
+
+![Step 2 in Chinese with Standby on](docs/screenshots/06-step2-zh-standby-on.png)
 
 ### Command-line Deployment
 
