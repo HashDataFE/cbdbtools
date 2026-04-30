@@ -278,14 +278,18 @@
                 </div>
             </div>
 
-            <!-- Standby Coordinator (toggle) -->
-            <div class="toggle-section">
+            <!-- Standby Coordinator (toggle) — multi-node only -->
+            <div class="toggle-section" id="standby_section">
                 <label class="toggle-header">
-                    <input type="checkbox" id="chk_standby" {{ 'checked' if file_config.get('WITH_STANDBY') == 'true' else '' }}>
+                    <input type="checkbox" id="chk_standby" {{ 'checked' if file_config.get('WITH_STANDBY') == 'true' else '' }} onchange="onStandbyToggle()">
                     <span data-i18n="standby_coord">Standby Coordinator</span>
                 </label>
                 <div class="toggle-body" id="standby_body">
-                    <div class="hint" data-i18n="standby_hint">A standby coordinator will be created on one of the segment hosts for automatic failover.</div>
+                    <div class="fr">
+                        <div class="fg"><label data-i18n="standby_ip">Standby IP</label><input type="text" id="standby_ip" value="{{ standby_host[0] }}" placeholder="10.14.5.250"></div>
+                        <div class="fg"><label data-i18n="standby_host">Standby Hostname</label><input type="text" id="standby_host" value="{{ standby_host[1] }}" placeholder="smdw"></div>
+                    </div>
+                    <div class="hint" data-i18n="standby_hint">A dedicated standby host will be configured for coordinator failover. cbdb supports exactly one standby; SSH credentials reuse the segment access settings above.</div>
                 </div>
             </div>
 
@@ -364,6 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
     onDeployTypeChange();
     onSegAccessChange();
     onMirrorToggle();
+    onStandbyToggle();
     initSegTable();
     const pp = document.getElementById('pkg_path').value.trim();
     if (pp) validatePkg();
@@ -378,6 +383,14 @@ function onDeployTypeChange() {
     document.getElementById('dt_hint').dataset.i18n = hintKey;
     document.getElementById('sec_seghosts').style.display = deployType === 'multi' ? 'block' : 'none';
     document.getElementById('ph_seg').style.display = deployType === 'multi' ? 'block' : 'none';
+    // Standby coordinator only makes sense in multi-node mode (single-node
+    // has nowhere to host the standby; gpinitstandby would fail).
+    const standbySec = document.getElementById('standby_section');
+    standbySec.style.display = deployType === 'multi' ? 'block' : 'none';
+    if (deployType !== 'multi') {
+        const cb = document.getElementById('chk_standby');
+        if (cb.checked) { cb.checked = false; onStandbyToggle(); }
+    }
     configSaved = false; updateSaveState();
 }
 
@@ -396,7 +409,11 @@ function onMirrorToggle() {
 }
 
 // ==================== Standby Toggle ====================
-document.getElementById('chk_standby')?.addEventListener('change', () => { configSaved = false; updateSaveState(); });
+function onStandbyToggle() {
+    const on = document.getElementById('chk_standby').checked;
+    document.getElementById('standby_body').classList.toggle('open', on);
+    configSaved = false; updateSaveState();
+}
 
 // ==================== Segment Table ====================
 function initSegTable() {
@@ -533,7 +550,12 @@ function saveConfig() {
         fd.append('MIRROR_PORT_BASE', document.getElementById('m_port').value);
     }
 
-    fd.append('WITH_STANDBY', document.getElementById('chk_standby').checked ? 'true' : 'false');
+    const standbyOn = document.getElementById('chk_standby').checked && deployType === 'multi';
+    fd.append('WITH_STANDBY', standbyOn ? 'true' : 'false');
+    if (standbyOn) {
+        fd.append('STANDBY_IP', document.getElementById('standby_ip').value.trim());
+        fd.append('STANDBY_HOSTNAME', document.getElementById('standby_host').value.trim());
+    }
     fd.append('TIMEZONE', document.getElementById('opt_tz').value.trim());
     fd.append('MANUAL_REPO', document.getElementById('opt_skiprepo').checked ? 'true' : 'false');
     fd.append('INIT_ENV_ONLY', document.getElementById('opt_envonly').checked ? 'true' : 'false');
@@ -599,6 +621,19 @@ function validateStep2() {
         let has = false;
         document.querySelectorAll('#seg_tbody tr').forEach(tr => { if (tr.querySelector('.seg-ip').value.trim()) has = true; });
         if (!has) { alert('Add at least one segment host'); return false; }
+        if (document.getElementById('chk_standby').checked) {
+            const sIp = document.getElementById('standby_ip').value.trim();
+            const sHost = document.getElementById('standby_host').value.trim();
+            if (!sIp) { alert(I18N.standby_need_ip[curLang]); return false; }
+            const cIp = document.getElementById('c_ip').value.trim();
+            const cHost = document.getElementById('c_host').value.trim();
+            if (sIp === cIp) { alert(I18N.standby_dup_coord[curLang]); return false; }
+            if (sHost && sHost === cHost) { alert(I18N.standby_dup_coord[curLang]); return false; }
+            const segIps = Array.from(document.querySelectorAll('#seg_tbody .seg-ip')).map(el => el.value.trim()).filter(Boolean);
+            const segHosts2 = Array.from(document.querySelectorAll('#seg_tbody .seg-host')).map(el => el.value.trim()).filter(Boolean);
+            if (segIps.includes(sIp)) { alert(I18N.standby_dup_seg[curLang]); return false; }
+            if (sHost && segHosts2.includes(sHost)) { alert(I18N.standby_dup_seg[curLang]); return false; }
+        }
     }
     return true;
 }
@@ -629,6 +664,10 @@ function renderPreview(d) {
         h += '<div class="pv-section"><h3>Segment Hosts</h3><table class="pv-table"><thead><tr><th>#</th><th>IP</th><th>Hostname</th></tr></thead><tbody>';
         d.segments.forEach((s,i) => { h += '<tr><td>'+(i+1)+'</td><td>'+esc(s.ip)+'</td><td>'+esc(s.hostname)+'</td></tr>'; });
         h += '</tbody></table></div>';
+    }
+
+    if (d.standby) {
+        h += pvSec('Standby Coordinator', [['IP', d.standby.ip||'-'], ['Hostname', d.standby.hostname||'-']]);
     }
 
     h += pvSec('Options', [['Admin User', p.ADMIN_USER||'gpadmin'], ['Mirror', p.WITH_MIRROR==='true'?'Enabled':'Disabled'], ['Standby', p.WITH_STANDBY==='true'?'Enabled':'Disabled'], ['Timezone', p.TIMEZONE||'Asia/Shanghai']].concat(
@@ -778,7 +817,12 @@ const I18N = {
     mirror_port: { en: 'Mirror Port Base', zh: 'Mirror 起始端口' },
     mirror_hint: { en: 'Mirror segments provide redundancy. Each primary segment will have a corresponding mirror.', zh: 'Mirror 提供数据冗余，每个主 Segment 会有一个对应的 Mirror 副本。' },
     standby_coord: { en: 'Standby Coordinator', zh: 'Standby Coordinator' },
-    standby_hint: { en: 'A standby coordinator will be created on one of the segment hosts for automatic failover.', zh: '将在一台 Segment 主机上创建 Standby Coordinator，用于自动故障切换。' },
+    standby_hint: { en: 'A dedicated standby host will be configured for coordinator failover. cbdb supports exactly one standby; SSH credentials reuse the segment access settings above.', zh: '将单独配置一台 Standby 主机用于 Coordinator 故障切换。cbdb 仅支持单 Standby；SSH 凭据复用上方 Segment 的访问设置。' },
+    standby_ip: { en: 'Standby IP', zh: 'Standby IP' },
+    standby_host: { en: 'Standby Hostname', zh: 'Standby 主机名' },
+    standby_need_ip: { en: 'Standby IP is required when standby is enabled', zh: '启用 Standby 时必须填写 Standby IP' },
+    standby_dup_coord: { en: 'Standby must differ from coordinator', zh: 'Standby 不能与 Coordinator 相同' },
+    standby_dup_seg: { en: 'Standby must differ from segment hosts', zh: 'Standby 不能与 Segment 主机相同' },
     options: { en: 'Options', zh: '选项' }, timezone: { en: 'Timezone', zh: '时区' },
     skip_repo: { en: 'Skip Repo Config', zh: '跳过软件源配置' },
     env_only: { en: 'Init Environment Only', zh: '仅初始化环境' },
