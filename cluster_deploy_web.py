@@ -151,6 +151,33 @@ def parse_segment_hosts(hosts_path=None):
     return segments
 
 
+def parse_standby_host(hosts_path=None):
+    """Parse the optional ##Standby hosts block; returns (ip, hostname) or ('', '')."""
+    if hosts_path is None:
+        hosts_path = HOSTS_FILE_PATH
+    if not os.path.isfile(hosts_path):
+        return ('', '')
+    in_section = False
+    with open(hosts_path, 'r') as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith('##Standby hosts'):
+                in_section = True
+                continue
+            if not in_section:
+                continue
+            if stripped.startswith('#') or not stripped:
+                if stripped.startswith('#'):
+                    break
+                continue
+            parts = stripped.split()
+            if len(parts) >= 2:
+                return (parts[0], parts[1])
+            if len(parts) == 1:
+                return (parts[0], '')
+    return ('', '')
+
+
 def detect_os_info():
     """Detect current operating system type and version."""
     info = {
@@ -293,7 +320,8 @@ def generate_config_file(params):
         '',
     ]
 
-    skip_keys = {'SEGMENT_IPS', 'SEGMENT_HOSTNAMES', 'SEGMENT_COUNT'}
+    skip_keys = {'SEGMENT_IPS', 'SEGMENT_HOSTNAMES', 'SEGMENT_COUNT',
+                 'STANDBY_IP', 'STANDBY_HOSTNAME'}
 
     for key, value in merged.items():
         if value and key not in skip_keys:
@@ -349,6 +377,15 @@ def generate_hosts_file(params):
     for i, ip in enumerate(ip_list):
         hostname = hostname_list[i] if i < len(hostname_list) else f'sdw{i + 1}'
         lines.append(f'{ip} {hostname}')
+
+    # Optional standby block. Consumed by init_env.sh + init_cluster.sh
+    # (PR #34) when WITH_STANDBY=true. cbdb supports exactly one standby.
+    if params.get('WITH_STANDBY') == 'true':
+        standby_ip = params.get('STANDBY_IP', '').strip()
+        standby_host = params.get('STANDBY_HOSTNAME', '').strip()
+        if standby_ip:
+            lines.append('##Standby hosts')
+            lines.append(f'{standby_ip} {standby_host or "smdw"}')
 
     lines.append('#Hashdata hosts end')
     return '\n'.join(lines) + '\n'
@@ -454,9 +491,11 @@ def index():
     """Main page - wizard interface."""
     file_config = parse_config_file()
     segment_hosts = parse_segment_hosts()
+    standby_host = parse_standby_host()
     return render_template('index.html',
                            file_config=file_config,
-                           segment_hosts=segment_hosts)
+                           segment_hosts=segment_hosts,
+                           standby_host=standby_host)
 
 
 @app.route('/detect_os')
@@ -569,6 +608,35 @@ def save_config():
                     segment_ips.append(ip)
                     segment_hostnames.append(hostname or f'sdw{len(segment_ips)}')
 
+    # Standby coordinator (multi-node only — single-node has no second host
+    # to host a standby; gpinitstandby would fail).
+    with_standby = request.form.get('WITH_STANDBY', 'false')
+    standby_ip = request.form.get('STANDBY_IP', '').strip()
+    standby_hostname = request.form.get('STANDBY_HOSTNAME', '').strip()
+    if with_standby == 'true':
+        if deploy_type != 'multi':
+            return jsonify({'success': False, 'message': 'Standby coordinator requires multi-node deployment'})
+        if not standby_ip:
+            return jsonify({'success': False, 'message': 'Standby IP is required when standby coordinator is enabled'})
+        if not validate_ip(standby_ip):
+            return jsonify({'success': False, 'message': f'Invalid standby IP: {standby_ip}'})
+        if standby_hostname and not validate_hostname(standby_hostname):
+            return jsonify({'success': False, 'message': f'Invalid standby hostname: {standby_hostname}'})
+        coord_ip = request.form.get('COORDINATOR_IP', '').strip()
+        coord_host = request.form.get('COORDINATOR_HOSTNAME', '').strip()
+        if standby_ip == coord_ip:
+            return jsonify({'success': False, 'message': 'Standby IP must differ from coordinator IP'})
+        if standby_hostname and standby_hostname == coord_host:
+            return jsonify({'success': False, 'message': 'Standby hostname must differ from coordinator hostname'})
+        if standby_ip in segment_ips:
+            return jsonify({'success': False, 'message': 'Standby IP must differ from segment IPs'})
+        if standby_hostname and standby_hostname in segment_hostnames:
+            return jsonify({'success': False, 'message': 'Standby hostname must differ from segment hostnames'})
+    else:
+        # Drop any leftover values so generate_hosts_file does not emit a block.
+        standby_ip = ''
+        standby_hostname = ''
+
     deploy_params = {
         'ADMIN_USER': request.form.get('ADMIN_USER', 'gpadmin').strip(),
         'ADMIN_USER_PASSWORD': request.form.get('ADMIN_USER_PASSWORD', ''),
@@ -600,6 +668,13 @@ def save_config():
         deploy_params['SEGMENT_ACCESS_USER'] = request.form.get('SEGMENT_ACCESS_USER', 'root').strip()
         deploy_params['SEGMENT_ACCESS_PASSWORD'] = request.form.get('SEGMENT_ACCESS_PASSWORD', '')
         deploy_params['SEGMENT_ACCESS_KEYFILE'] = request.form.get('SEGMENT_ACCESS_KEYFILE', '').strip()
+
+    # Stash standby info for generate_hosts_file (filtered out of
+    # deploycluster_parameter.sh by skip_keys; standby SSH access reuses
+    # SEGMENT_ACCESS_* — same machines, same credentials).
+    if with_standby == 'true' and standby_ip:
+        deploy_params['STANDBY_IP'] = standby_ip
+        deploy_params['STANDBY_HOSTNAME'] = standby_hostname or 'smdw'
 
     session['deploy_params'] = deploy_params
     session['deploy_type'] = deploy_type
@@ -634,6 +709,11 @@ def preview_config():
             hostname = hosts[i] if i < len(hosts) else f'sdw{i+1}'
             segments.append({'ip': ip, 'hostname': hostname})
 
+    standby = None
+    if params.get('WITH_STANDBY') == 'true' and params.get('STANDBY_IP'):
+        standby = {'ip': params.get('STANDBY_IP', ''),
+                   'hostname': params.get('STANDBY_HOSTNAME', '')}
+
     # Calculate segment count
     data_dirs = params.get('DATA_DIRECTORY', '/data0/database/primary').split()
     segs_per_host = len(data_dirs)
@@ -655,6 +735,7 @@ def preview_config():
         'db': db_info,
         'params': {k: v for k, v in params.items() if k != 'ADMIN_USER_PASSWORD' and k != 'SEGMENT_ACCESS_PASSWORD'},
         'segments': segments,
+        'standby': standby,
         'segs_per_host': segs_per_host,
         'total_segments': total_segments,
         'warnings': warnings,
