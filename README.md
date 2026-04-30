@@ -112,8 +112,8 @@ Then open `http://<coordinator-ip>:5000` in a browser.
 The Web UI is a 4-step wizard:
 
 1. **Environment** - Select OS type (auto-detected), deployment mode (single/multi), and database package. You can either enter a path to a package already on the server, or **upload a package directly from your browser** via drag-and-drop (with real-time progress)
-2. **Configuration** - Set admin user, coordinator info, segment hosts (multi-node), data directories, and advanced options. Click **Save Configuration** before proceeding
-3. **Preview** - Review complete deployment summary with warnings for missing mirrors/standby
+2. **Configuration** - Set admin user, coordinator info, segment hosts (multi-node), data directories, and advanced options. Toggle **Mirror Segments** for redundancy, and toggle **Standby Coordinator** to deploy a standby host (multi-node only — checking the box reveals IP + hostname inputs; cbdb supports exactly one standby; the standby reuses the same SSH credentials as segments). Click **Save Configuration** before proceeding
+3. **Preview** - Review complete deployment summary, including the standby host when enabled, with warnings for missing mirrors/standby
 4. **Deploy** - Real-time log streaming with phase progress indicators. Shows connection info on success
 
 ### Command-line Deployment

@@ -112,8 +112,8 @@ bash start_web.sh
 Web UI 采用 4 步向导模式：
 
 1. **环境配置** - 选择操作系统（自动检测）、部署模式（单机/多机）、数据库安装包。支持从浏览器拖拽上传安装包（实时显示进度）
-2. **集群配置** - 设置管理员用户、Coordinator 信息、Segment 主机（多机模式）、数据目录等。点击**保存配置**后继续
-3. **确认部署** - 查看完整部署配置摘要，包含 Mirror/Standby 未启用等警告信息
+2. **集群配置** - 设置管理员用户、Coordinator 信息、Segment 主机（多机模式）、数据目录等。可勾选 **Mirror Segments** 启用 Mirror 副本；可勾选 **Standby Coordinator** 部署 Standby 主机（仅多机模式 — 勾选后展开 IP + 主机名输入；cbdb 仅支持单 Standby；Standby 复用 Segment 的 SSH 凭据）。点击**保存配置**后继续
+3. **确认部署** - 查看完整部署配置摘要，启用 Standby 时会展示 Standby 主机信息；包含 Mirror/Standby 未启用等警告信息
 4. **执行部署** - 实时日志流输出，带阶段进度指示器。成功后显示连接信息
 
 界面支持中英文切换（右上角切换按钮）。
