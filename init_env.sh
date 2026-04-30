@@ -259,12 +259,21 @@ if [ "$cluster_type" = "multi" ]; then
 
   config_hostsfile
 
-  # Extend SSH config to include segment hosts (and the standby host if
-  # any — gpadmin needs SSH-keyless access to it for gpinitstandby's
-  # base-backup phase).
+  # Extend SSH config to include segment hosts + their IPs (and the
+  # standby host + its IP if any). gpadmin needs SSH-keyless access to
+  # them for gpinitstandby's base-backup phase, AND tools like
+  # gpinitsystem probe segments by IP — without IP entries in the Host
+  # line, StrictHostKeyChecking falls back to the system default (ask)
+  # and BatchMode-yes SSH fails on first connect even when known_hosts
+  # is populated. Pre-baked images often paper over this; fresh VMs do
+  # not.
   seg_hosts=$(paste -sd' ' "${working_dir}/segment_hosts.txt")
   standby_hosts=$(paste -sd' ' "${working_dir}/standby_hosts.txt" 2>/dev/null)
-  sed -i "s/^Host .*/& ${seg_hosts} ${standby_hosts}/" "/home/${ADMIN_USER}/.ssh/config"
+  seg_ips=$(sed -n '/##Segment hosts/,/##Standby hosts\|#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | \
+    awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {print $1}' | paste -sd' ')
+  standby_ips=$(sed -n '/##Standby hosts/,/#Hashdata hosts end/p' "${SCRIPT_DIR}/segmenthosts.conf" | \
+    awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {print $1}' | paste -sd' ')
+  sed -i "s/^Host .*/& ${seg_hosts} ${standby_hosts} ${seg_ips} ${standby_ips}/" "/home/${ADMIN_USER}/.ssh/config"
 
   # Add segment + standby hosts to known_hosts for root. Concatenating
   # the two files keeps the loop a no-op in the no-standby case

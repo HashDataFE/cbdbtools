@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VARS_FILE="deploycluster_parameter.sh"
 
 source "${SCRIPT_DIR}/${VARS_FILE}"
+source "${SCRIPT_DIR}/common.sh"
 
 if [ "${1}" = "single" ] || [ "${1}" = "multi" ]; then
   cluster_type="${1}"
